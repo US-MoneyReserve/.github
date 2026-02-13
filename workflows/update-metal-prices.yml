@@ -204,6 +204,8 @@ jobs:
             
             [skip ci]"
             
+            # Pull with rebase in case of remote changes, then push
+            git pull --rebase origin main || true
             git push
             echo "✅ Changes committed and pushed"
           fi
