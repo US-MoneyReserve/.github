@@ -1,6 +1,6 @@
-# US Money Reserve - Engineering
+# US Money Reserve - Infrstructure
 
-Welcome to the US Money Reserve Engineering organization.
+Welcome to the US Money Reserve Infrastructure organization.
 
 <!-- METALS_PRICES_START -->
 <!-- This section will be automatically updated by GitHub Actions -->
