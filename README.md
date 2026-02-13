@@ -1,4 +1,4 @@
-# US Money Reserve - Infrstructure
+# US Money Reserve - Infrastructure
 
 Welcome to the US Money Reserve Infrastructure organization.
 
