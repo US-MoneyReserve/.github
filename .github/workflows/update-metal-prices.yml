@@ -134,17 +134,17 @@ jobs:
           fi
           
           # Generate price table
-          cat > "$TEMP_PRICES" << 'EOF'
+          cat > "$TEMP_PRICES" << EOF
           ## 💰 Live Precious Metals Prices
           
           | Metal | Spot Price (USD/oz) | 
           |-------|---------------------|
-          | 🥇 **Gold** | $'${GOLD_PRICE}' |
-          | 🥈 **Silver** | $'${SILVER_PRICE}' |
-          | 💎 **Platinum** | $'${PLATINUM_PRICE}' |
-          | 💠 **Palladium** | $'${PALLADIUM_PRICE}' |
+          | 🥇 **Gold** | \$${GOLD_PRICE} |
+          | 🥈 **Silver** | \$${SILVER_PRICE} |
+          | 💎 **Platinum** | \$${PLATINUM_PRICE} |
+          | 💠 **Palladium** | \$${PALLADIUM_PRICE} |
           
-          *Last updated: '${TIMESTAMP}' (via '${PROVIDER}')*
+          *Last updated: ${TIMESTAMP} (via ${PROVIDER})*
           
           ---
           EOF
