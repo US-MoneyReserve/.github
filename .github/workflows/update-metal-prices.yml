@@ -1,0 +1,223 @@
+name: Update Precious Metals Prices
+
+on:
+  schedule:
+    # Run every 4 hours during market hours (6 AM - 6 PM UTC, Mon-Fri)
+    - cron: '0 6,10,14,18 * * 1-5'
+    # Run once on weekends for reference
+    - cron: '0 12 * * 0,6'
+  workflow_dispatch:  # Allow manual triggers
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/update-metal-prices.yml'
+
+jobs:
+  update-prices:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq jq bc curl
+
+      - name: Fetch and update metal prices
+        id: fetch_prices
+        env:
+          # Configure one or more API keys as GitHub Secrets
+          # The script will try them in order until one succeeds
+          GOLDAPI_KEY: ${{ secrets.GOLDAPI_KEY }}
+          METALPRICEAPI_KEY: ${{ secrets.METALPRICEAPI_KEY }}
+          METALSAPI_KEY: ${{ secrets.METALSAPI_KEY }}
+        run: |
+          set -e
+          
+          PROFILE_README="profile/README.md"
+          TEMP_PRICES="/tmp/metal_prices.md"
+          TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          
+          # Multi-Provider Price Fetcher
+          try_goldapi() {
+              if [ -z "$GOLDAPI_KEY" ]; then return 1; fi
+              echo "🔍 Trying GoldAPI..."
+              
+              GOLD=$(curl -sf -H "x-access-token: ${GOLDAPI_KEY}" \
+                  "https://www.goldapi.io/api/XAU/USD" | jq -r '.price // empty' || echo "")
+              SILVER=$(curl -sf -H "x-access-token: ${GOLDAPI_KEY}" \
+                  "https://www.goldapi.io/api/XAG/USD" | jq -r '.price // empty' || echo "")
+              PLATINUM=$(curl -sf -H "x-access-token: ${GOLDAPI_KEY}" \
+                  "https://www.goldapi.io/api/XPT/USD" | jq -r '.price // empty' || echo "")
+              PALLADIUM=$(curl -sf -H "x-access-token: ${GOLDAPI_KEY}" \
+                  "https://www.goldapi.io/api/XPD/USD" | jq -r '.price // empty' || echo "")
+              
+              if [ -n "$GOLD" ] && [ -n "$SILVER" ]; then
+                  GOLD_PRICE="$GOLD"
+                  SILVER_PRICE="$SILVER"
+                  PLATINUM_PRICE="${PLATINUM:-N/A}"
+                  PALLADIUM_PRICE="${PALLADIUM:-N/A}"
+                  PROVIDER="GoldAPI"
+                  return 0
+              fi
+              return 1
+          }
+          
+          try_metalpriceapi() {
+              if [ -z "$METALPRICEAPI_KEY" ]; then return 1; fi
+              echo "🔍 Trying MetalpriceAPI..."
+              
+              RESPONSE=$(curl -sf "https://api.metalpriceapi.com/v1/latest?api_key=${METALPRICEAPI_KEY}&base=USD&currencies=XAU,XAG,XPT,XPD" || echo '{"success":false}')
+              
+              if echo "$RESPONSE" | jq -e '.success == true' > /dev/null 2>&1; then
+                  GOLD_RATE=$(echo "$RESPONSE" | jq -r '.rates.XAU // 0')
+                  SILVER_RATE=$(echo "$RESPONSE" | jq -r '.rates.XAG // 0')
+                  PLATINUM_RATE=$(echo "$RESPONSE" | jq -r '.rates.XPT // 0')
+                  PALLADIUM_RATE=$(echo "$RESPONSE" | jq -r '.rates.XPD // 0')
+                  
+                  GOLD_PRICE=$(echo "scale=2; 1/$GOLD_RATE" | bc)
+                  SILVER_PRICE=$(echo "scale=2; 1/$SILVER_RATE" | bc)
+                  PLATINUM_PRICE=$(echo "scale=2; 1/$PLATINUM_RATE" | bc)
+                  PALLADIUM_PRICE=$(echo "scale=2; 1/$PALLADIUM_RATE" | bc)
+                  PROVIDER="MetalpriceAPI"
+                  return 0
+              fi
+              return 1
+          }
+          
+          try_metalsapi() {
+              if [ -z "$METALSAPI_KEY" ]; then return 1; fi
+              echo "🔍 Trying Metals-API..."
+              
+              RESPONSE=$(curl -sf "https://metals-api.com/api/latest?access_key=${METALSAPI_KEY}&base=USD&symbols=XAU,XAG,XPT,XPD" || echo '{"success":false}')
+              
+              if echo "$RESPONSE" | jq -e '.success == true' > /dev/null 2>&1; then
+                  GOLD_RATE=$(echo "$RESPONSE" | jq -r '.rates.XAU // 0')
+                  SILVER_RATE=$(echo "$RESPONSE" | jq -r '.rates.XAG // 0')
+                  PLATINUM_RATE=$(echo "$RESPONSE" | jq -r '.rates.XPT // 0')
+                  PALLADIUM_RATE=$(echo "$RESPONSE" | jq -r '.rates.XPD // 0')
+                  
+                  GOLD_PRICE=$(echo "scale=2; 1/$GOLD_RATE" | bc)
+                  SILVER_PRICE=$(echo "scale=2; 1/$SILVER_RATE" | bc)
+                  PLATINUM_PRICE=$(echo "scale=2; 1/$PLATINUM_RATE" | bc)
+                  PALLADIUM_PRICE=$(echo "scale=2; 1/$PALLADIUM_RATE" | bc)
+                  PROVIDER="Metals-API"
+                  return 0
+              fi
+              return 1
+          }
+          
+          # Try all providers in order
+          if try_goldapi || try_metalpriceapi || try_metalsapi; then
+              echo "✅ Prices fetched from ${PROVIDER}:"
+              echo "   Gold: \$$GOLD_PRICE"
+              echo "   Silver: \$$SILVER_PRICE"
+              echo "   Platinum: \$$PLATINUM_PRICE"
+              echo "   Palladium: \$$PALLADIUM_PRICE"
+          else
+              echo "❌ All API providers failed or no API keys configured"
+              echo ""
+              echo "Add one of these secrets to your repository:"
+              echo "  • GOLDAPI_KEY - https://www.goldapi.io/"
+              echo "  • METALPRICEAPI_KEY - https://metalpriceapi.com/"
+              echo "  • METALSAPI_KEY - https://metals-api.com/"
+              exit 1
+          fi
+          
+          # Generate price table
+          cat > "$TEMP_PRICES" << 'EOF'
+          ## 💰 Live Precious Metals Prices
+          
+          | Metal | Spot Price (USD/oz) | 
+          |-------|---------------------|
+          | 🥇 **Gold** | $'${GOLD_PRICE}' |
+          | 🥈 **Silver** | $'${SILVER_PRICE}' |
+          | 💎 **Platinum** | $'${PLATINUM_PRICE}' |
+          | 💠 **Palladium** | $'${PALLADIUM_PRICE}' |
+          
+          *Last updated: '${TIMESTAMP}' (via '${PROVIDER}')*
+          
+          ---
+          EOF
+          
+          # Ensure profile directory exists
+          mkdir -p profile
+          
+          # Initialize README if it doesn't exist
+          if [ ! -f "$PROFILE_README" ]; then
+              cat > "$PROFILE_README" << 'INIT_EOF'
+          # US Money Reserve - Engineering
+          
+          <!-- METALS_PRICES_START -->
+          <!-- METALS_PRICES_END -->
+          
+          ## About
+          Infrastructure as Code | DevOps | Cloud Engineering
+          INIT_EOF
+          fi
+          
+          # Update README between markers
+          awk '
+              BEGIN { in_block=0 }
+              /<!-- METALS_PRICES_START -->/ { 
+                  print
+                  system("cat '"$TEMP_PRICES"'")
+                  in_block=1
+                  next
+              }
+              /<!-- METALS_PRICES_END -->/ { in_block=0 }
+              !in_block { print }
+          ' "$PROFILE_README" > "${PROFILE_README}.tmp"
+          
+          mv "${PROFILE_README}.tmp" "$PROFILE_README"
+          echo "✅ README updated"
+          
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+      - name: Commit changes
+        if: steps.fetch_prices.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add profile/README.md
+          
+          # Only commit if there are actual changes
+          if git diff --staged --quiet; then
+            echo "ℹ️  No price changes detected"
+          else
+            git commit -m "📊 Update precious metals prices
+
+            Automated update of spot prices for:
+            - Gold
+            - Silver  
+            - Platinum
+            - Palladium
+            
+            [skip ci]"
+            
+            git push
+            echo "✅ Changes committed and pushed"
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Precious Metals Price Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f profile/README.md ]; then
+            echo "✅ Profile README updated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Current Prices" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/metal_prices.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "Price data not available"
+          else
+            echo "❌ Failed to update README" >> $GITHUB_STEP_SUMMARY
+          fi
