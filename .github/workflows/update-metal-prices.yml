@@ -35,8 +35,10 @@ jobs:
       - name: Fetch and update metal prices
         id: fetch_prices
         env:
-          # Configure one or more API keys as GitHub Secrets
-          # The script will try them in order until one succeeds
+          # Configure API keys as GitHub Secrets
+          # Alpha Vantage: 750 requests/month (primary)
+          ALPHAVANTAGE_KEY: ${{ secrets.ALPHAVANTAGE_KEY }}
+          # Fallbacks if Alpha Vantage fails
           GOLDAPI_KEY: ${{ secrets.GOLDAPI_KEY }}
           METALPRICEAPI_KEY: ${{ secrets.METALPRICEAPI_KEY }}
           METALSAPI_KEY: ${{ secrets.METALSAPI_KEY }}
@@ -47,7 +49,28 @@ jobs:
           TEMP_PRICES="/tmp/metal_prices.md"
           TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
           
-          # Multi-Provider Price Fetcher
+          # Alpha Vantage (750 requests/month)
+          try_alphavantage() {
+              if [ -z "$ALPHAVANTAGE_KEY" ]; then return 1; fi
+              echo "🔍 Trying Alpha Vantage..."
+              
+              GOLD_RATE=$(curl -sf "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAU&to_currency=USD&apikey=${ALPHAVANTAGE_KEY}" | jq -r '."Realtime Currency Exchange Rate"."5. Exchange Rate" // empty' || echo "")
+              SILVER_RATE=$(curl -sf "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XAG&to_currency=USD&apikey=${ALPHAVANTAGE_KEY}" | jq -r '."Realtime Currency Exchange Rate"."5. Exchange Rate" // empty' || echo "")
+              PLATINUM_RATE=$(curl -sf "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XPT&to_currency=USD&apikey=${ALPHAVANTAGE_KEY}" | jq -r '."Realtime Currency Exchange Rate"."5. Exchange Rate" // empty' || echo "")
+              PALLADIUM_RATE=$(curl -sf "https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=XPD&to_currency=USD&apikey=${ALPHAVANTAGE_KEY}" | jq -r '."Realtime Currency Exchange Rate"."5. Exchange Rate" // empty' || echo "")
+              
+              if [ -n "$GOLD_RATE" ] && [ -n "$SILVER_RATE" ]; then
+                  GOLD_PRICE="$GOLD_RATE"
+                  SILVER_PRICE="$SILVER_RATE"
+                  PLATINUM_PRICE="${PLATINUM_RATE:-N/A}"
+                  PALLADIUM_PRICE="${PALLADIUM_RATE:-N/A}"
+                  PROVIDER="Alpha Vantage"
+                  return 0
+              fi
+              return 1
+          }
+          
+          # GoldAPI (100 requests/month)
           try_goldapi() {
               if [ -z "$GOLDAPI_KEY" ]; then return 1; fi
               echo "🔍 Trying GoldAPI..."
@@ -72,6 +95,7 @@ jobs:
               return 1
           }
           
+          # MetalpriceAPI (100 requests/month)
           try_metalpriceapi() {
               if [ -z "$METALPRICEAPI_KEY" ]; then return 1; fi
               echo "🔍 Trying MetalpriceAPI..."
@@ -94,6 +118,7 @@ jobs:
               return 1
           }
           
+          # Metals-API (100 requests/month)
           try_metalsapi() {
               if [ -z "$METALSAPI_KEY" ]; then return 1; fi
               echo "🔍 Trying Metals-API..."
@@ -116,8 +141,8 @@ jobs:
               return 1
           }
           
-          # Try all providers in order
-          if try_goldapi || try_metalpriceapi || try_metalsapi; then
+          # Try all providers in order (Alpha Vantage first)
+          if try_alphavantage || try_goldapi || try_metalpriceapi || try_metalsapi; then
               echo "✅ Prices fetched from ${PROVIDER}:"
               echo "   Gold: \$$GOLD_PRICE"
               echo "   Silver: \$$SILVER_PRICE"
@@ -127,9 +152,10 @@ jobs:
               echo "❌ All API providers failed or no API keys configured"
               echo ""
               echo "Add one of these secrets to your repository:"
-              echo "  • GOLDAPI_KEY - https://www.goldapi.io/"
-              echo "  • METALPRICEAPI_KEY - https://metalpriceapi.com/"
-              echo "  • METALSAPI_KEY - https://metals-api.com/"
+              echo "  • ALPHAVANTAGE_KEY - https://www.alphavantage.co/support/#api-key (750/month)"
+              echo "  • GOLDAPI_KEY - https://www.goldapi.io/ (100/month)"
+              echo "  • METALPRICEAPI_KEY - https://metalpriceapi.com/ (100/month)"
+              echo "  • METALSAPI_KEY - https://metals-api.com/ (100/month)"
               exit 1
           fi
           
