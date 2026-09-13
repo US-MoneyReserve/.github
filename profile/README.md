@@ -7,12 +7,12 @@ Welcome to the US Money Reserve Infrastructure organization.
 
 | Metal | Spot Price (USD/oz) | 
 |-------|---------------------|
-| 🥇 **Gold** | $4318.89 |
-| 🥈 **Silver** | $63.46 |
-| 💎 **Platinum** | $1779.20 |
-| 💠 **Palladium** | $1284.80 |
+| 🥇 **Gold** | $4349.06 |
+| 🥈 **Silver** | $64.49 |
+| 💎 **Platinum** | $1796.50 |
+| 💠 **Palladium** | $1298.13 |
 
-*Last updated: 2026-09-12 15:23:30 UTC (via MetalpriceAPI)*
+*Last updated: 2026-09-13 16:01:44 UTC (via MetalpriceAPI)*
 
 ---
 <!-- METALS_PRICES_END -->
