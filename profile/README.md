@@ -12,7 +12,7 @@ Welcome to the US Money Reserve Infrastructure organization.
 | 💎 **Platinum** | $1817.68 |
 | 💠 **Palladium** | $1320.86 |
 
-*Last updated: 2026-09-23 11:17:55 UTC (via MetalpriceAPI)*
+*Last updated: 2026-09-23 18:20:44 UTC (via MetalpriceAPI)*
 
 ---
 <!-- METALS_PRICES_END -->
